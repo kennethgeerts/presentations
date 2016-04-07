@@ -1,0 +1,394 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+
+<title>Skinny Controllers in Rails: What About Filtering and Sorting?</title>
+
+<meta name="description" content="">
+<meta name="author" content="Kenneth Geerts">
+<meta name="generator" content="reveal-ck 3.3.0">
+
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, minimal-ui">
+
+<link rel="stylesheet" href="css/reveal.css">
+<link rel="stylesheet" href="css/theme/white.css" id="theme">
+
+<!-- Code syntax highlighting -->
+<link rel="stylesheet" href="lib/css/zenburn.css">
+
+<link rel="stylesheet" href="css/reveal-ck.css">
+
+
+<!-- Printing and PDF exports -->
+<script>
+  var link = document.createElement( 'link' );
+  link.rel = 'stylesheet';
+  link.type = 'text/css';
+  link.href = window.location.search.match( /print-pdf/gi ) ? 'css/print/pdf.css' : 'css/print/paper.css';
+  document.getElementsByTagName( 'head' )[0].appendChild( link );
+</script>
+
+<!--[if lt IE 9]>
+<script src="lib/js/html5shiv.js"></script>
+<![endif]-->
+
+  </head>
+
+  <body>
+    <div class="reveal">
+  <!-- Any section element inside of this container is displayed as a slide -->
+  <div class="slides">
+    <section>
+
+<h1>Skinny Controllers</h1>
+
+<h1>in Rails</h1>
+
+<h3>What About Filtering and Sorting?</h3>
+
+</section>
+<section>
+
+<h1>Controller ???</h1>
+
+</section>
+<section>
+
+<h2>authZ</h2>
+
+</section>
+<section>
+
+<h2>HTTP ☞ app ☞ HTTP</h2>
+
+</section>
+<section>
+
+<h1>
+<img class="emoji" alt=":speech_balloon:" src="https://assets-cdn.github.com/images/icons/emoji/unicode/1f4ac.png"> Disclaimer</h1>
+
+</section>
+<section>
+
+<h1>
+<img class="emoji" alt=":mag:" src="https://assets-cdn.github.com/images/icons/emoji/unicode/1f50d.png"> Case study</h1>
+
+</section>
+<section>
+
+<p><img src="images/app.png" alt="The app"></p>
+
+</section>
+<section>
+<pre><code class="ruby">class SubscriptionsController &lt; ApplicationController
+  load_and_authorize_resource
+  check_authorization
+
+  helper_method :sort_direction, :sort_column
+
+  def index
+    if search_params.empty?
+      @subscriptions = @subscriptions.
+        order("#{sort_column} #{sort_direction}").
+        paginate(:page =&gt; params.fetch(:page, 1),
+                 :per_page =&gt; params.fetch(:per_page, 10)).decorate
+    else
+      query, query_params = build_query
+      @subscriptions = @subscriptions.
+        where(query, query_params).
+        order("#{sort_column} #{sort_direction}").
+        paginate(:page =&gt; params.fetch(:page, 1),
+                 :per_page =&gt; params.fetch(:per_page, 10)).decorate
+    end
+  end
+
+  def build_query
+    q = []
+    p = {}
+
+    if !search_params[:name].blank?
+      q &lt;&lt; 'name ilike :name'
+      p[:name] = "%#{search_params[:name]}%"
+    end
+    # ...
+    if !search_params[:status].blank?
+      q &lt;&lt; 'status = :status'
+      p[:status] = search_params[:status]
+    end
+    [q.join(' AND '), p]
+  end
+
+  # other actions
+
+  private
+
+  def search_params
+    p = params.permit(:name, :customer_number,
+                      :preferred_channel, :email, :status)
+    p.delete_if { |k, v| v.blank? &amp;&amp; v != false }
+    p
+  end
+
+  def sort_column
+    %w(name customer_number preferred_channel)
+      .include?(params[:sort]) ? params[:sort] : 'name'
+  end
+
+  def sort_direction
+    %w(asc desc).include?(params[:direction]) ? params[:direction] : 'asc'
+  end
+
+  # other private methods
+end
+</code></pre>
+</section>
+<section>
+
+<h1>
+<img class="emoji" alt=":warning:" src="https://assets-cdn.github.com/images/icons/emoji/unicode/26a0.png"> <img class="emoji" alt=":zap:" src="https://assets-cdn.github.com/images/icons/emoji/unicode/26a1.png"> <img class="emoji" alt=":bomb:" src="https://assets-cdn.github.com/images/icons/emoji/unicode/1f4a3.png"> <img class="emoji" alt=":skull:" src="https://assets-cdn.github.com/images/icons/emoji/unicode/1f480.png">
+</h1>
+
+</section>
+<section>
+
+<h3><div class="fragment">fails the S in SOLID</div></h3>
+
+<h3><div class="fragment">repetition</div></h3>
+
+<h3><div class="fragment">hard to test</div></h3>
+
+<h3><div class="fragment">misunderstanding of ActiveRecord relations</div></h3>
+
+<h3><div class="fragment">hardcoded SQL</div></h3>
+
+<h3><div class="fragment">visibility of actions</div></h3>
+
+<h3><div class="fragment">magic numbers</div></h3>
+
+</section>
+<section>
+
+<h2>double authorization checks</h2>
+<pre><code class="ruby">load_and_authorize_resource
+check_authorization
+</code></pre>
+</section>
+<section>
+
+<h2>sharing of the helper methods</h2>
+<pre><code class="ruby">helper_method :sort_direction, :sort_column
+
+private
+
+def sort_column
+  %w(name customer_number preferred_channel)
+    .include?(params[:sort]) ? params[:sort] : 'name'
+end
+
+def sort_direction
+  %w(asc desc).include?(params[:direction]) ? params[:direction] : 'asc'
+end
+</code></pre>
+</section>
+<section>
+
+<h1><img class="emoji" alt=":scream:" src="https://assets-cdn.github.com/images/icons/emoji/unicode/1f631.png"></h1>
+
+</section>
+<section>
+<pre><code class="ruby">def index
+  if search_params.empty?
+    @subscriptions = @subscriptions.
+      order("#{sort_column} #{sort_direction}").
+      paginate(:page =&gt; params.fetch(:page, 1),
+               :per_page =&gt; params.fetch(:per_page, 10)).decorate
+  else
+    query, query_params = build_query
+    @subscriptions = @subscriptions.
+      where(query, query_params).
+      order("#{sort_column} #{sort_direction}").
+      paginate(:page =&gt; params.fetch(:page, 1),
+               :per_page =&gt; params.fetch(:per_page, 10)).decorate
+  end
+end
+</code></pre>
+</section>
+<section>
+<pre><code class="ruby">def search_params
+  p = params.permit(:name, :customer_number, :preferred_channel,
+                    :email, :unique_enterprise_number, :status)
+  p.delete_if { |k, v| v.blank? &amp;&amp; v != false }
+  p
+end
+</code></pre>
+</section>
+<section>
+<pre><code class="ruby">def build_query
+  q = []
+  p = {}
+
+  if !search_params[:name].blank?
+    q &lt;&lt; 'name ilike :name'
+    p[:name] = "%#{search_params[:name]}%"
+  end
+  # ...
+  if !search_params[:status].blank?
+    q &lt;&lt; 'status = :status'
+    p[:status] = search_params[:status]
+  end
+  [q.join(' AND '), p]
+end
+</code></pre>
+</section>
+<section>
+
+<h2>Model</h2>
+
+</section>
+<section>
+<pre><code class="ruby">class Subscription &lt; ActiveRecord::Base
+  # Insert domain logic here
+end
+</code></pre>
+</section>
+<section>
+
+<h2>enter scopes</h2>
+
+</section>
+<section>
+
+<p><code>scope(name, scope_options = {}), public</code></p>
+
+<p>Adds a class method for retrieving and querying objects. A scope represents a narrowing of a database query […].</p>
+
+</section>
+<section>
+<pre><code class="ruby">scope :preferred_channel, -&gt;(preferred_channel) {
+  where(preferred_channel: preferred_channel)
+}
+</code></pre>
+</section>
+<section>
+<pre><code class="ruby">scope :name, -&gt;(name) {
+  where('name ILIKE ?', "%#{name}%")
+}
+</code></pre>
+</section>
+<section>
+<pre><code class="ruby">scope :status, -&gt;(status) {
+  where(status: status)
+}
+</code></pre>
+</section>
+<section>
+
+<h2>…</h2>
+
+</section>
+<section>
+<pre><code class="ruby">def for_params(params)
+  results = self.where(nil)
+  sort = params.delete(:sort)
+  direction = params.delete(:direction)
+  direction = 'ASC' unless direction == 'DESC'
+  results = results.reorder("#{sort} #{direction}") if sort
+  results = results.name(params[:name]) if params[:name].present?
+  results = results.status(params[:status]) if params[:status].present?
+  # repeat for all the filters
+  results
+end
+</code></pre>
+</section>
+<section>
+<pre><code class="ruby">class Subscription &lt; ActiveRecord::Base
+  default_scope { for_params(sort: 'customer_name') }
+  scope :customer_name, -&gt;(customer_name) { ... }
+  scope :customer_number, -&gt;(customer_number) { ... }
+  scope :preferred_channel, -&gt;(preferred_channel) { ... }
+  scope :email, -&gt;(email) { ... }
+  scope :unique_enterprise_number, -&gt;(unique_enterprise_number) { ... }
+  scope :status, -&gt;(status) { ... }
+  def for_params(params)
+    # ...
+  end
+end
+</code></pre>
+</section>
+<section>
+<pre><code class="ruby">class SubscriptionsController &lt; ApplicationController
+  load_and_authorize_resource
+
+  def index
+    @subscriptions = @subscriptions.for_params(index_params)
+  end
+
+  private
+
+  def index_params
+    params.permit(:name, :customer_number,
+                  :preferred_channel, :email, :status,
+                  :sort, :direction, :page, :per_page)
+  end
+end
+</code></pre>
+</section>
+<section>
+
+<h1>Conclusion</h1>
+
+<h3><div class="fragment">embrace Rails</div></h3>
+
+<h3><div class="fragment">don't be happy if it <em>just works</em>
+</div></h3>
+
+<h3><div class="fragment">refactoring makes you <strong>happy</strong>
+</div></h3>
+
+</section>
+<section>
+
+<h1>Thank you</h1>
+
+</section>
+
+  </div>
+</div>
+
+<script src="lib/js/head.min.js"></script>
+<script src="js/reveal.js"></script>
+
+<script>
+  (function() {
+  function extend( a, b ) {
+    for(var i in b) {
+      a[i] = b[i];
+    }
+  }
+  var baseOptions = {
+    transition: 'default',
+
+    dependencies: [
+      { src: 'lib/js/classList.js', condition: function() { return !document.body.classList; } },
+      { src: 'plugin/markdown/marked.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+      { src: 'plugin/markdown/markdown.js', condition: function() { return !!document.querySelector( '[data-markdown]' ); } },
+      { src: 'plugin/highlight/highlight.js', async: true, condition: function() { return !!document.querySelector( 'pre code' ); }, callback: function() { hljs.initHighlightingOnLoad(); } },
+      { src: 'plugin/zoom-js/zoom.js', async: true },
+      { src: 'plugin/notes/notes.js', async: true }
+    ]
+  };
+  var configOptions = {"controls":true,"progress":true,"history":true,"center":true}
+  var initializeOptions = {};
+  extend(initializeOptions, baseOptions);
+  extend(initializeOptions, configOptions);
+  Reveal.initialize(initializeOptions);
+})();
+
+</script>
+
+  </body>
+</html>
